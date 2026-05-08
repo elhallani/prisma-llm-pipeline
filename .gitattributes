@@ -1,0 +1,47 @@
+# ──────────────────────────────────────────────────────────
+# Auto-detect text files and normalize line endings
+# ──────────────────────────────────────────────────────────
+* text=auto eol=lf
+
+# ──────────────────────────────────────────────────────────
+# Source files
+# ──────────────────────────────────────────────────────────
+*.py    text diff=python
+*.js    text
+*.json  text
+*.md    text
+*.yml   text
+*.yaml  text
+*.cff   text
+*.txt   text
+*.gs    text
+
+# ──────────────────────────────────────────────────────────
+# Binary files (no diff, no LF conversion)
+# ──────────────────────────────────────────────────────────
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.svg   text
+*.pdf   binary
+
+# Office documents
+*.docx  binary
+*.xlsx  binary
+*.pptx  binary
+
+# ──────────────────────────────────────────────────────────
+# Git LFS (uncomment if you need to track files >50MB)
+# ──────────────────────────────────────────────────────────
+# *.pdf   filter=lfs diff=lfs merge=lfs -text
+# *.zip   filter=lfs diff=lfs merge=lfs -text
+# *.tar.gz filter=lfs diff=lfs merge=lfs -text
+
+# ──────────────────────────────────────────────────────────
+# Linguist overrides (GitHub language stats)
+# ──────────────────────────────────────────────────────────
+*.ipynb linguist-detectable=true
+*.gs    linguist-language=JavaScript
+docs/** linguist-documentation

@@ -1,0 +1,56 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the repository as below."
+title: "PRISMA-LLM Pipeline: Five-Layer Human-in-the-Loop Systematic Review Screening"
+abstract: >-
+  An open-source, reproducible, human-in-the-loop pipeline for PRISMA 2020-compliant
+  systematic review screening. Combines multi-database API acquisition (6 sources),
+  structured LLM scoring (Llama 3.3 70B, 5 PICO-aligned criteria), validated human
+  oversight (triple Cohen's κ), and automated PDF retrieval (12 sources) in one
+  configuration-driven, domain-agnostic workflow.
+authors:
+  - family-names: "El Hallani"
+    given-names: "Anass"
+    affiliation: "Laboratoire d'Intelligence Machine (LIM), Faculty of Sciences and Techniques, Hassan II University of Casablanca, Mohammedia, Morocco"
+    email: "anass.elhallani-etu@etu.univh2c.ma"
+    orcid: "https://orcid.org/0009-0007-3449-4327"
+  - family-names: "Chakhtouna"
+    given-names: "Adil"
+    affiliation: "Laboratoire d'Intelligence Machine (LIM), Hassan II University of Casablanca, Morocco"
+  - family-names: "Adib"
+    given-names: "Abdellah"
+    affiliation: "Laboratoire d'Intelligence Machine (LIM), Hassan II University of Casablanca, Morocco"
+version: "0.1.0"
+date-released: "2026-05-08"
+license: "MIT"
+repository-code: "https://github.com/elhallani/prisma-llm-pipeline"
+url: "https://github.com/elhallani/prisma-llm-pipeline"
+keywords:
+  - "systematic review"
+  - "PRISMA 2020"
+  - "large language model"
+  - "screening automation"
+  - "human-in-the-loop"
+  - "Cohen's kappa"
+  - "evidence synthesis"
+  - "open-source"
+  - "Llama 3"
+
+# Note: A peer-reviewed methodology paper is in preparation.
+# When published, the `preferred-citation` block below will be uncommented
+# and updated with the journal DOI.
+#
+# preferred-citation:
+#   type: article
+#   title: "An Integrated Semi-Automated Screening Protocol for Systematic Reviews:
+#           Five-Layer Human-in-the-Loop Design, Structured LLM Scoring,
+#           and Validated Open-Source Deployment"
+#   authors:
+#     - family-names: "El Hallani"
+#       given-names: "Anass"
+#     - family-names: "Chakhtouna"
+#       given-names: "Adil"
+#     - family-names: "Adib"
+#       given-names: "Abdellah"
+#   journal: "[Journal Name]"
+#   year: 2026
+#   doi: "[to be assigned upon publication]"

@@ -1,0 +1,62 @@
+{
+  "@context": "https://doi.org/10.5063/schema/codemeta-2.0",
+  "@type": "SoftwareSourceCode",
+  "identifier": "prisma-llm-pipeline",
+  "name": "PRISMA-LLM Pipeline",
+  "description": "An open-source, reproducible, human-in-the-loop pipeline for PRISMA 2020-compliant systematic review screening, integrating six-database API acquisition, structured LLM scoring (Llama 3.3 70B), validated triple Cohen's kappa oversight, and automated PDF retrieval.",
+  "codeRepository": "https://github.com/elhallani/prisma-llm-pipeline",
+  "issueTracker": "https://github.com/elhallani/prisma-llm-pipeline/issues",
+  "license": "https://spdx.org/licenses/MIT",
+  "version": "0.1.0",
+  "datePublished": "2026-05-08",
+  "developmentStatus": "active",
+  "operatingSystem": ["Linux", "macOS", "Windows"],
+  "programmingLanguage": ["Python", "JavaScript"],
+  "softwareRequirements": [
+    "Python >= 3.10",
+    "n8n",
+    "Google Workspace (Sheets, Colab, Drive)"
+  ],
+  "keywords": [
+    "systematic review",
+    "PRISMA 2020",
+    "large language model",
+    "screening automation",
+    "human-in-the-loop",
+    "Cohen's kappa",
+    "evidence synthesis",
+    "open-source",
+    "Llama 3"
+  ],
+  "author": [
+    {
+      "@type": "Person",
+      "givenName": "Anass",
+      "familyName": "El Hallani",
+      "email": "anass.elhallani-etu@etu.univh2c.ma",
+      "@id": "https://orcid.org/0009-0007-3449-4327",
+      "affiliation": {
+        "@type": "Organization",
+        "name": "Laboratoire d'Intelligence Machine (LIM), Hassan II University of Casablanca"
+      }
+    },
+    {
+      "@type": "Person",
+      "givenName": "Adil",
+      "familyName": "Chakhtouna",
+      "affiliation": {
+        "@type": "Organization",
+        "name": "Laboratoire d'Intelligence Machine (LIM), Hassan II University of Casablanca"
+      }
+    },
+    {
+      "@type": "Person",
+      "givenName": "Abdellah",
+      "familyName": "Adib",
+      "affiliation": {
+        "@type": "Organization",
+        "name": "Laboratoire d'Intelligence Machine (LIM), Hassan II University of Casablanca"
+      }
+    }
+  ]
+}

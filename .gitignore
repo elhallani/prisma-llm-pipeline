@@ -1,0 +1,113 @@
+# ──────────────────────────────────────────────────────────
+# 🔒 SECRETS & CREDENTIALS — NEVER COMMIT
+# ──────────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+*.env
+secrets/
+credentials/
+*-credentials.json
+*_credentials.json
+service_account*.json
+google-credentials*.json
+api_keys.txt
+*.pem
+*.key
+
+# Active config files (you create these locally; never commit)
+config/active.json
+config/config_*_real.json
+config/*_PRIVATE*.json
+
+# ──────────────────────────────────────────────────────────
+# 📊 SCREENING DATA & PDFS — Never commit (privacy / size)
+# ──────────────────────────────────────────────────────────
+*.pdf
+runs/
+outputs/
+exports/
+
+# ──────────────────────────────────────────────────────────
+# 🐍 Python
+# ──────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# Jupyter / Colab
+.ipynb_checkpoints/
+*-checkpoint.ipynb
+
+# Coverage / cache
+.cache/
+*.log
+
+# ──────────────────────────────────────────────────────────
+# 📦 Node / n8n
+# ──────────────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.yarn-integrity
+.n8n/
+
+# ──────────────────────────────────────────────────────────
+# 💻 OS & Editors
+# ──────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# VSCode
+.vscode/
+*.code-workspace
+
+# JetBrains
+.idea/
+*.iml
+
+# Vim / Emacs
+*.swp
+*.swo
+*~
+
+# ──────────────────────────────────────────────────────────
+# 📝 Build outputs & temporary files
+# ──────────────────────────────────────────────────────────
+*.tmp
+*.temp
+*.bak
+*.old
+*.orig
+tmp/
+temp/
+
+# ──────────────────────────────────────────────────────────
+# 🚫 Large files (use Git LFS if needed)
+# ──────────────────────────────────────────────────────────
+*.zip
+*.tar.gz
+*.tgz
+*.rar
+*.7z

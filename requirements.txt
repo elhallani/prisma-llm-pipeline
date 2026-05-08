@@ -1,0 +1,32 @@
+# ══════════════════════════════════════════════════════════════════
+# PRISMA-LLM Pipeline — Python Dependencies
+#
+# Most users won't need this file: the notebook runs on Google Colab
+# where dependencies are installed by the first cell (`!pip install ...`).
+#
+# This file is provided for users who want to:
+#   - Run the notebook locally (Jupyter, VSCode)
+#   - Build their own modifications on top of the pipeline
+# ══════════════════════════════════════════════════════════════════
+
+# ── Core data handling ─────────────────────────────────────────────
+pandas>=2.1.0,<3.0.0
+numpy>=1.26.0,<2.0.0
+
+# ── Google Sheets integration ──────────────────────────────────────
+gspread>=6.0.0,<7.0.0
+google-auth>=2.27.0
+google-auth-oauthlib>=1.2.0
+
+# ── HTTP / API calls ───────────────────────────────────────────────
+requests>=2.31.0,<3.0.0
+
+# ── HTML / XML parsing (PDF retrieval, abstract enrichment) ────────
+beautifulsoup4>=4.12.0
+lxml>=5.0.0
+
+# ── Statistical computation (κ, bootstrap CI) ──────────────────────
+scikit-learn>=1.4.0,<2.0.0
+
+# ── Configuration ──────────────────────────────────────────────────
+python-dotenv>=1.0.0

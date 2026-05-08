@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate Configurations & Notebooks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Validate JSON configuration files
+        run: |
+          for f in config/*.json; do
+            echo "Validating $f"
+            python -c "import json; json.load(open('$f')); print('  OK valid JSON')"
+          done
+
+      - name: Validate Jupyter notebook structure
+        run: |
+          for f in colab/*.ipynb; do
+            echo "Validating $f"
+            python -c "
+          import json
+          with open('$f') as fp:
+              nb = json.load(fp)
+          assert 'cells' in nb, 'No cells'
+          print(f'  OK {len(nb[\"cells\"])} cells, valid notebook')
+          "
+          done
+
+      - name: Validate n8n workflow JSON
+        run: |
+          for f in n8n/*.json; do
+            echo "Validating $f"
+            python -c "import json; json.load(open('$f')); print('  OK valid JSON')"
+          done
+
+  secret-scan:
+    name: Secret Scanning
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

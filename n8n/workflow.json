@@ -1,0 +1,642 @@
+{
+  "name": "PRISMA-LLM Pipeline — Phase 1 (Acquisition + Layer 1)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "2b149b21-b3c3-4e35-8137-535a477deccf",
+      "name": "▶️ Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        9968,
+        2928
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst d = $input.first().json;\nconst SC = d.SCREENING;\nconst all = d.results || [];\n\nfunction hasKW(text, keywords) {\n  const t = (text||'').toLowerCase();\n  for (const k of keywords) { if (t.includes(k.toLowerCase())) return true; }\n  return false;\n}\n\nfunction isExcluded(title, abstract) {\n  const t = (title||'').toLowerCase();\n  const a = (abstract||'').toLowerCase();\n  for (const ex of (SC.exclude_if_title||[])) { if (t.includes(ex)) return true; }\n  for (const ex of (SC.exclude_if||[])) { if (t.includes(ex) || a.includes(ex)) return true; }\n  return false;\n}\n\nconst results = all.map(art => {\n  const title = art.title || '';\n  const abstract = art.abstract || '';\n  const text = title + ' ' + abstract;\n  \n  // Check exclusions first\n  if (isExcluded(title, abstract)) {\n    return {...art, q1_ad:'NO', q2_speech:'NO', q3_ai:'NO', decision:'EXCLUDE', reason:'Excluded by title/abstract keywords'};\n  }\n  \n  // 3 binary questions\n  const q1 = hasKW(text, SC.ad_keywords);\n  const q2 = hasKW(text, SC.speech_keywords);\n  const q3 = hasKW(text, SC.ai_keywords);\n  const yesCount = (q1?1:0) + (q2?1:0) + (q3?1:0);\n  \n  let decision, tier='';\n  if (yesCount === 3) { decision = 'INCLUDE'; }\n  else if (yesCount === 2) { decision = 'BORDERLINE'; tier = 'A'; }\n  else if (yesCount === 1) { decision = 'BORDERLINE'; tier = 'B'; }\n  else { decision = 'EXCLUDE'; }\n  \n  return {\n    ...art,\n    q1_ad: q1 ? 'YES' : 'NO',\n    q2_speech: q2 ? 'YES' : 'NO', \n    q3_ai: q3 ? 'YES' : 'NO',\n    decision,\n    borderline_tier: tier,\n    filter_auto: yesCount === 3 ? 'INCLUDE' : yesCount === 2 ? 'BORDERLINE-A' : yesCount === 1 ? 'BORDERLINE-B' : 'EXCLUDE',\n  };\n});\n\nconst inc = results.filter(r => r.decision === 'INCLUDE').length;\nconst bordA = results.filter(r => r.filter_auto === 'BORDERLINE-A').length;\nconst bordB = results.filter(r => r.filter_auto === 'BORDERLINE-B').length;\nconst exc = results.filter(r => r.decision === 'EXCLUDE').length;\n\nreturn [{json:{\n  ...d,\n  results,\n  screening: { total: results.length, include: inc, borderline_a: bordA, borderline_b: bordB, exclude: exc },\n}}];\n"
+      },
+      "id": "8df1297d-e5b6-410c-93b8-5a902ba85272",
+      "name": "📋 Layer 1: Keyword Filter (3 questions)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        12160,
+        3440
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ════════════════════════════════════════════════════════════════════\n// 🖼️ PRISMA Flow Diagram (SVG) — domain-agnostic version\n// ════════════════════════════════════════════════════════════════════\n// Reads review title from upstream Config (no hardcoded title).\n// ════════════════════════════════════════════════════════════════════\n\nconst d = $input.first().json;\nconst s = d.screening || {};\n\n// Read review title from Config (multiple fallback paths for robustness)\nconst reviewTitle = d.review_title\n                 || (d.REVIEW && d.REVIEW.title)\n                 || (d.SUJET && d.SUJET.titre)\n                 || 'Systematic Review';\n\nconst total = s.total          || 0;\nconst inc   = s.include        || 0;\nconst bordA = s.borderline_a   || 0;\nconst bordB = s.borderline_b   || 0;\nconst exc   = s.exclude        || 0;\nconst dt    = new Date().toISOString().slice(0, 10);\n\n// Truncate title for SVG (max ~110 chars to fit on one line)\nconst titleSafe = String(reviewTitle).replace(/[<>&]/g, '').slice(0, 110);\n\nconst svg = `<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1100 900\" font-family=\"Arial\">\n<text x=\"550\" y=\"30\" text-anchor=\"middle\" font-size=\"18\" font-weight=\"bold\" fill=\"#1B2A4A\">PRISMA 2020 Flow Diagram — DRAFT</text>\n<text x=\"550\" y=\"50\" text-anchor=\"middle\" font-size=\"11\" fill=\"#666\">${titleSafe}</text>\n\n<!-- IDENTIFICATION -->\n<rect x=\"20\" y=\"70\" width=\"28\" height=\"130\" fill=\"#2563EB\" rx=\"4\"/>\n<text x=\"34\" y=\"145\" transform=\"rotate(-90,34,145)\" font-size=\"12\" fill=\"white\" font-weight=\"bold\">IDENTIFICATION</text>\n<rect x=\"65\" y=\"75\" width=\"470\" height=\"55\" fill=\"#EFF6FF\" stroke=\"#333\" rx=\"8\"/>\n<text x=\"300\" y=\"100\" text-anchor=\"middle\" font-size=\"14\" font-weight=\"bold\">Records identified (n = ${total})</text>\n<text x=\"300\" y=\"118\" text-anchor=\"middle\" font-size=\"10\" fill=\"#666\">6 databases: OpenAlex, PubMed, S2, IEEE, Scopus, Springer</text>\n\n<!-- LAYER 1: AUTO -->\n<rect x=\"20\" y=\"220\" width=\"28\" height=\"100\" fill=\"#D97706\" rx=\"4\"/>\n<text x=\"34\" y=\"280\" transform=\"rotate(-90,34,280)\" font-size=\"12\" fill=\"white\" font-weight=\"bold\">LAYER 1: AUTO</text>\n<rect x=\"65\" y=\"230\" width=\"470\" height=\"45\" fill=\"#FFFBEB\" stroke=\"#333\" rx=\"8\"/>\n<text x=\"300\" y=\"257\" text-anchor=\"middle\" font-size=\"13\" font-weight=\"bold\">Keyword screening (3 binary questions)</text>\n<rect x=\"590\" y=\"225\" width=\"300\" height=\"55\" fill=\"#FEF2F2\" stroke=\"#DC2626\" rx=\"8\"/>\n<text x=\"740\" y=\"248\" text-anchor=\"middle\" font-size=\"12\" font-weight=\"bold\" fill=\"#DC2626\">Excluded: ${exc}</text>\n<text x=\"740\" y=\"268\" text-anchor=\"middle\" font-size=\"10\" fill=\"#666\">0/3 keywords matched</text>\n<line x1=\"535\" y1=\"252\" x2=\"590\" y2=\"252\" stroke=\"#666\" stroke-width=\"1.5\" marker-end=\"url(#arrow)\"/>\n\n<!-- After Layer 1 -->\n<rect x=\"65\" y=\"320\" width=\"470\" height=\"55\" fill=\"#ECFDF5\" stroke=\"#059669\" rx=\"8\"/>\n<text x=\"300\" y=\"345\" text-anchor=\"middle\" font-size=\"13\" font-weight=\"bold\" fill=\"#059669\">After Layer 1 (n = ${inc + bordA + bordB})</text>\n<text x=\"300\" y=\"363\" text-anchor=\"middle\" font-size=\"10\" fill=\"#666\">INCLUDE: ${inc} · BORDERLINE-A: ${bordA} · BORDERLINE-B: ${bordB}</text>\n<line x1=\"300\" y1=\"275\" x2=\"300\" y2=\"320\" stroke=\"#666\" stroke-width=\"1.5\" marker-end=\"url(#arrow)\"/>\n\n<!-- LAYER 2-5: PENDING -->\n<rect x=\"20\" y=\"420\" width=\"28\" height=\"380\" fill=\"#7C3AED\" rx=\"4\"/>\n<text x=\"34\" y=\"610\" transform=\"rotate(-90,34,610)\" font-size=\"12\" fill=\"white\" font-weight=\"bold\">LAYERS 2-5: PHASE 2 (Colab)</text>\n<rect x=\"65\" y=\"430\" width=\"470\" height=\"40\" fill=\"#FAF5FF\" stroke=\"#666\" stroke-dasharray=\"4 4\" rx=\"8\"/>\n<text x=\"300\" y=\"455\" text-anchor=\"middle\" font-size=\"11\" fill=\"#666\">Layer 2 — LLM screening (PENDING)</text>\n<rect x=\"65\" y=\"490\" width=\"470\" height=\"40\" fill=\"#FAF5FF\" stroke=\"#666\" stroke-dasharray=\"4 4\" rx=\"8\"/>\n<text x=\"300\" y=\"515\" text-anchor=\"middle\" font-size=\"11\" fill=\"#666\">Layer 3 — Independent human verification (PENDING)</text>\n<rect x=\"65\" y=\"550\" width=\"470\" height=\"40\" fill=\"#FAF5FF\" stroke=\"#666\" stroke-dasharray=\"4 4\" rx=\"8\"/>\n<text x=\"300\" y=\"575\" text-anchor=\"middle\" font-size=\"11\" fill=\"#666\">Layer 4 — Automated PDF retrieval (PENDING)</text>\n<rect x=\"65\" y=\"610\" width=\"470\" height=\"40\" fill=\"#FAF5FF\" stroke=\"#666\" stroke-dasharray=\"4 4\" rx=\"8\"/>\n<text x=\"300\" y=\"635\" text-anchor=\"middle\" font-size=\"11\" fill=\"#666\">Layer 5 — Full-text assessment (PENDING)</text>\n\n<!-- Footer -->\n<text x=\"550\" y=\"870\" text-anchor=\"middle\" font-size=\"9\" fill=\"#999\">Generated ${dt} · run_id: ${d.run_id || 'unknown'}</text>\n\n<defs>\n  <marker id=\"arrow\" markerWidth=\"10\" markerHeight=\"10\" refX=\"8\" refY=\"3\" orient=\"auto\">\n    <path d=\"M0,0 L0,6 L9,3 z\" fill=\"#666\"/>\n  </marker>\n</defs>\n</svg>`;\n\nreturn [{ json: { svg, run_id: d.run_id, generated_at: dt } }];\n"
+      },
+      "name": "🖼️ PRISMA Flow Diagram (SVG)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        12544,
+        3216
+      ],
+      "id": "223f653d-95ed-496f-9255-2ae45068a51e"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ════════════════════════════════════════════════════════════════════\n// PRISMA-LLM Pipeline — Configuration Node (Wizard Mode v2.0)\n// ════════════════════════════════════════════════════════════════════\n//\n// 🎯 SINGLE SOURCE OF TRUTH\n//    This is the ONLY node you ever edit to adapt the pipeline to a\n//    new systematic review topic. All downstream nodes (acquisition,\n//    deduplication, screening, formatting, output) read everything\n//    from here. Don't touch them.\n//\n// 🔧 QUICK START (5 minutes):\n//    1. Set REVIEW.title and PROSPERO_ID\n//    2. Fill the 3 keyword arrays (POPULATION, INTERVENTION, METHOD)\n//    3. Add off-topic exclusions\n//    4. Choose corpus_size: \"small\" / \"medium\" / \"large\"\n//    5. Save & execute\n//\n// 🪄 AUTO-GENERATED:\n//    - 8 Boolean queries (one per database, with correct syntax each)\n//    - PAGES (pagination per database, sized by corpus_size)\n//    - RATE / RETRY (sensible defaults)\n//    - Validation with clear error messages\n//\n// 🔒 API KEYS (set as n8n environment variables):\n//    PRISMA_NCBI_KEY              → https://www.ncbi.nlm.nih.gov/account/\n//    PRISMA_NCBI_EMAIL            → your institutional email\n//    PRISMA_SPRINGER_KEY          → https://dev.springernature.com/\n//    PRISMA_SPRINGER_OA_KEY       → https://dev.springernature.com/\n//    PRISMA_SEMANTIC_SCHOLAR_KEY  → https://api.semanticscholar.org/\n//    PRISMA_IEEE_KEY              → https://developer.ieee.org/\n//    PRISMA_SCOPUS_KEY            → https://dev.elsevier.com/\n//    PRISMA_GOOGLE_SHEET_ID       → from your Sheet URL\n//\n// ════════════════════════════════════════════════════════════════════\n\n\n// ╔══════════════════════════════════════════════════════════════════╗\n// ║  🔧 EDIT THIS BLOCK — Your review configuration                  ║\n// ╚══════════════════════════════════════════════════════════════════╝\n\nconst REVIEW = {\n  title:        \"AI-based AD Detection from Speech/Text/Multimodal — Binary AD vs HC\",\n  prospero_id:  null,  // Optional: add \"CRDxxxxxxxxxxxx\" if registered. Not required for methodology papers.\n  year_from:    2018,\n  year_to:      2025,\n  language:     \"english\",\n  corpus_size:  \"medium\",   // \"small\" (200/DB) | \"medium\" (500/DB) | \"large\" (1000/DB)\n};\n\n// Group 1 — Population / target condition (5-15 terms)\nconst POPULATION = [\n  \"Alzheimer\", \"Alzheimer's disease\", \"alzheimers\", \"alzheimer disease\",\n  \"dementia\", \"alzheimer dementia\", \"cognitive impairment\", \"cognitive decline\",\n  \"neurodegenerative\", \"alzheimer detection\", \"dementia detection\",\n  \"cognitive screening\", \"memory impairment\", \"mild cognitive impairment\", \"MCI\",\n];\n\n// Group 2 — Data modality / intervention (5-30 terms)\nconst INTERVENTION = [\n  \"speech\", \"speech analysis\", \"speech processing\", \"spontaneous speech\",\n  \"voice\", \"voice analysis\", \"vocal\", \"acoustic\", \"acoustic features\",\n  \"spoken language\", \"audio\", \"prosody\", \"phonetic\", \"fluency\", \"disfluency\",\n  \"spectrogram\", \"mfcc\", \"mel-frequency\", \"verbal fluency\",\n  \"transcript\", \"transcription\", \"text analysis\", \"text classification\",\n  \"NLP\", \"natural language processing\", \"linguistic\", \"linguistic features\",\n  \"language impairment\", \"language production\", \"language decline\",\n  \"semantic\", \"syntactic\", \"lexical\", \"utterance\", \"discourse\",\n  \"cookie theft\", \"picture description\", \"DementiaBank\", \"ADReSS\", \"ADReSSo\",\n  \"multimodal\", \"multi-modal\", \"multimodal fusion\", \"feature fusion\",\n  \"speech and text\", \"audio-text\", \"acoustic and linguistic\",\n];\n\n// Group 3 — Method / technology (5-30 terms)\nconst METHOD = [\n  \"artificial intelligence\", \"machine learning\", \"deep learning\",\n  \"neural network\", \"classification\", \"classifier\",\n  \"transformer\", \"attention mechanism\", \"CNN\", \"convolutional\",\n  \"LSTM\", \"RNN\", \"recurrent\", \"GRU\", \"DNN\", \"MLP\", \"perceptron\",\n  \"autoencoder\", \"GAN\", \"graph neural\", \"GNN\", \"capsule network\", \"siamese\",\n  \"BERT\", \"RoBERTa\", \"GPT\", \"LLM\", \"large language model\",\n  \"wav2vec\", \"HuBERT\", \"Whisper\", \"WavLM\",\n  \"pre-trained\", \"pretrained\", \"fine-tuning\", \"transfer learning\",\n  \"SVM\", \"support vector\", \"random forest\", \"decision tree\",\n  \"XGBoost\", \"gradient boosting\", \"logistic regression\",\n  \"naive bayes\", \"KNN\", \"k-nearest\", \"ensemble\",\n  \"feature extraction\", \"cross-validation\", \"data augmentation\",\n  \"embedding\", \"PCA\", \"explainable AI\",\n  \"word2vec\", \"GloVe\", \"fastText\",\n];\n\n// Off-topic exclusions (substring match in title — case-insensitive)\nconst EXCLUDE_TOPICS = [\n  \"depression screening\", \"depression detection\",\n  \"parkinson detection\", \"parkinson's detection\", \"parkinson disease\",\n  \"schizophrenia\", \"bipolar\", \"epilepsy\", \"seizure\",\n  \"brain tumor\", \"glioma\", \"stroke detection\", \"multiple sclerosis\",\n  \"cancer detection\", \"mri classification\", \"brain mri\",\n  \"retinal\", \"ecg\", \"eeg classification\",\n  \"emotion recognition\", \"sentiment analysis\",\n  \"speaker verification\", \"speech synthesis\", \"text-to-speech\",\n  \"sign language\", \"hearing aid\",\n];\n\n// Non-research record types to exclude (any field)\nconst EXCLUDE_TYPES = [\n  \"editorial\", \"letter to editor\", \"book review\", \"correction\", \"erratum\",\n  \"mouse model\", \"rat model\", \"rodent\", \"in vitro\", \"in vivo\",\n  \"animal model\", \"transgenic mice\",\n];\n\n\n// ╔══════════════════════════════════════════════════════════════════╗\n// ║  🪄 EVERYTHING BELOW IS AUTO-GENERATED — Do NOT edit             ║\n// ╚══════════════════════════════════════════════════════════════════╝\n\n// ─── Helper: Build Boolean query group from terms ───────────────────\n// Wraps multi-word terms in quotes, joins with OR\nfunction orJoin(terms) {\n  return terms\n    .filter(t => t && typeof t === 'string')\n    .map(t => t.trim())\n    .filter(t => t.length > 0)\n    .map(t => t.includes(' ') ? `\"${t.replace(/\"/g, '\\\\\"')}\"` : t)\n    .join(' OR ');\n}\n\nconst G1 = `(${orJoin(POPULATION)})`;\nconst G2 = `(${orJoin(INTERVENTION)})`;\nconst G3 = `(${orJoin(METHOD)})`;\n\n// Per-database Boolean queries (each database has its own syntax quirks)\nconst QUERIES = {\n  // OpenAlex: standard Boolean\n  openalex: `${G1} AND ${G2} AND ${G3}`,\n\n  // PubMed: Boolean + [dp] date filter\n  pubmed: `${G1} AND ${G2} AND ${G3} AND ${REVIEW.year_from}:${REVIEW.year_to}[dp]`,\n\n  // Scopus: TITLE-ABS-KEY wrapper + PUBYEAR + DOCTYPE + LANGUAGE\n  scopus: `TITLE-ABS-KEY(${G1} AND ${G2} AND ${G3}) AND PUBYEAR > ${REVIEW.year_from - 1} AND PUBYEAR < ${REVIEW.year_to + 1} AND DOCTYPE(ar OR cp) AND LANGUAGE(${REVIEW.language})`,\n\n  // Semantic Scholar: natural language (no Boolean operators) — use top terms\n  semantic: [\n    ...POPULATION.slice(0, 4),\n    ...INTERVENTION.slice(0, 4),\n    ...METHOD.slice(0, 4)\n  ].join(' '),\n\n  // IEEE Xplore: simplified Boolean (IEEE struggles with very long queries)\n  ieee: `(${orJoin(POPULATION.slice(0, 8))}) AND (${orJoin(INTERVENTION.slice(0, 10))}) AND (${orJoin(METHOD.slice(0, 10))})`,\n\n  // Springer: multi-keyword loose (one main population term + small OR groups)\n  springer: `\"${POPULATION[0]}\" (${INTERVENTION.slice(0, 6).join(' OR ')}) (${METHOD.slice(0, 6).join(' OR ')})`,\n\n  // Springer Meta API: keyword: prefix syntax\n  springer_meta: `keyword:${POPULATION[0]} AND keyword:(${INTERVENTION.slice(0, 4).join(' OR ')}) AND keyword:(${METHOD.slice(0, 4).join(' OR ')})`,\n\n  // Springer Open Access: space-separated terms\n  springer_oa: [\n    ...POPULATION.slice(0, 2),\n    ...INTERVENTION.slice(0, 3),\n    ...METHOD.slice(0, 3)\n  ].join(' '),\n};\n\n// ─── Pagination presets by corpus size ─────────────────────────────\nconst PAGES_PRESETS = {\n  small: {\n    openalex:         { pages: 1,  per_page: 200, max_total: 200 },\n    pubmed:           { max_ids: 200, batch_size: 100             },\n    semantic_scholar: { pages: 2,  per_page: 100, max_total: 200 },\n    ieee:             { pages: 1,  per_page: 200, max_total: 200 },\n    scopus:           { pages: 4,  per_page: 25,  max_total: 100 },\n    springer:         { pages: 5,  per_page: 20,  max_total: 100 },\n  },\n  medium: {\n    openalex:         { pages: 3,  per_page: 200, max_total: 600 },\n    pubmed:           { max_ids: 500, batch_size: 200             },\n    semantic_scholar: { pages: 5,  per_page: 100, max_total: 500 },\n    ieee:             { pages: 3,  per_page: 200, max_total: 500 },\n    scopus:           { pages: 8,  per_page: 25,  max_total: 200 },\n    springer:         { pages: 10, per_page: 20,  max_total: 200 },\n  },\n  large: {\n    openalex:         { pages: 5,  per_page: 200, max_total: 1000 },\n    pubmed:           { max_ids: 800, batch_size: 200              },\n    semantic_scholar: { pages: 5,  per_page: 100, max_total: 500   },\n    ieee:             { pages: 4,  per_page: 200, max_total: 800   },\n    scopus:           { pages: 10, per_page: 25,  max_total: 250   },\n    springer:         { pages: 12, per_page: 20,  max_total: 200   },\n  },\n  debug: {  // for pilot runs (~120 records total)\n    openalex:         { pages: 1,  per_page: 50,  max_total: 50  },\n    pubmed:           { max_ids: 20, batch_size: 10              },\n    semantic_scholar: { pages: 1,  per_page: 20,  max_total: 20  },\n    ieee:             { pages: 1,  per_page: 50,  max_total: 50  },\n    scopus:           { pages: 1,  per_page: 25,  max_total: 25  },\n    springer:         { pages: 1,  per_page: 20,  max_total: 20  },\n  },\n};\n\nconst PAGES = PAGES_PRESETS[REVIEW.corpus_size] || PAGES_PRESETS.medium;\n\n// ─── Rate limits (ms between requests per DB) ──────────────────────\nconst RATE = {\n  openalex: 200,    // 5 req/sec\n  pubmed:   150,    // ~6 req/sec with API key\n  semantic: 1200,   // 1 req/sec without API key\n  ieee:     300,\n  scopus:   250,\n  springer: 800,\n};\n\n// ─── Retry policy ──────────────────────────────────────────────────\nconst RETRY = {\n  max:        3,\n  base_delay: 1000,\n  rate_delay: 5000,\n  timeout:    30000,\n  timeout_xl: 60000,\n};\n\n// ─── Read API keys from n8n environment variables ──────────────────\nconst KEYS = {\n  ncbi:          $env.PRISMA_NCBI_KEY              || '',\n  email:         $env.PRISMA_NCBI_EMAIL            || '',\n  springer:      $env.PRISMA_SPRINGER_KEY          || '',\n  springer_meta: $env.PRISMA_SPRINGER_KEY          || '',\n  springer_oa:   $env.PRISMA_SPRINGER_OA_KEY       || '',\n  semantic:      $env.PRISMA_SEMANTIC_SCHOLAR_KEY  || '',\n  ieee:          $env.PRISMA_IEEE_KEY              || '',\n  scopus:        $env.PRISMA_SCOPUS_KEY            || '',\n};\n\nconst SHEET = $env.PRISMA_GOOGLE_SHEET_ID || '';\n\n// ─── Validation: throw clear errors if config is invalid ───────────\nconst errors = [];\nconst warnings = [];\n\n// Required env vars\nconst required_env = {\n  'PRISMA_NCBI_KEY':              KEYS.ncbi,\n  'PRISMA_NCBI_EMAIL':            KEYS.email,\n  'PRISMA_SPRINGER_KEY':          KEYS.springer,\n  'PRISMA_SEMANTIC_SCHOLAR_KEY':  KEYS.semantic,\n  'PRISMA_IEEE_KEY':              KEYS.ieee,\n  'PRISMA_SCOPUS_KEY':            KEYS.scopus,\n  'PRISMA_GOOGLE_SHEET_ID':       SHEET,\n};\nfor (const [name, value] of Object.entries(required_env)) {\n  if (!value) errors.push(`Missing env variable: ${name}`);\n}\n\n// Required review fields\nif (!REVIEW.title || REVIEW.title.length < 10) errors.push('REVIEW.title is too short or missing');\nif (!REVIEW.year_from || !REVIEW.year_to) errors.push('REVIEW.year_from and year_to are required');\nif (REVIEW.year_from > REVIEW.year_to) errors.push(`REVIEW.year_from (${REVIEW.year_from}) > year_to (${REVIEW.year_to})`);\n\n// Keyword groups\nif (POPULATION.length < 3)   errors.push(`POPULATION has only ${POPULATION.length} terms — need at least 3`);\nif (INTERVENTION.length < 3) errors.push(`INTERVENTION has only ${INTERVENTION.length} terms — need at least 3`);\nif (METHOD.length < 3)       errors.push(`METHOD has only ${METHOD.length} terms — need at least 3`);\n\n// Soft warnings\nif (POPULATION.length < 5)   warnings.push(`POPULATION has only ${POPULATION.length} terms — recommend 5-15 for better coverage`);\nif (INTERVENTION.length < 5) warnings.push(`INTERVENTION has only ${INTERVENTION.length} terms — recommend 5-30 for better coverage`);\nif (METHOD.length < 5)       warnings.push(`METHOD has only ${METHOD.length} terms — recommend 5-30 for better coverage`);\n\n// corpus_size validity\nif (!['small', 'medium', 'large', 'debug'].includes(REVIEW.corpus_size)) {\n  errors.push(`REVIEW.corpus_size must be one of: small, medium, large, debug (got: ${REVIEW.corpus_size})`);\n}\n\nif (errors.length > 0) {\n  throw new Error(\n    'Configuration errors:\\n  - ' + errors.join('\\n  - ') +\n    '\\n\\nFix these in the Config node, then re-run.\\n' +\n    'See n8n/README.md for setup help.'\n  );\n}\n\n// ─── Run metadata ──────────────────────────────────────────────────\nconst run_id = 'PRISMA_v2_' + Date.now();\nconst timestamp_utc = new Date().toISOString();\n\n// ─── Build SCREENING object (used by Layer 1 + Format) ─────────────\nconst SCREENING = {\n  // Keyword groups (used by Layer 1 binary screener AND Format node)\n  ad_keywords:     POPULATION,\n  speech_keywords: INTERVENTION,\n  ai_keywords:     METHOD,\n\n  // Generic aliases (preferred for new domain-agnostic code)\n  population_keywords:   POPULATION,\n  intervention_keywords: INTERVENTION,\n  method_keywords:       METHOD,\n\n  // Exclusions\n  exclude_if_title: EXCLUDE_TOPICS,\n  exclude_if:       EXCLUDE_TYPES,\n};\n\n// ─── EXPORT — single source of truth for all downstream nodes ──────\nreturn [{\n  json: {\n    // Run metadata\n    run_id,\n    timestamp_utc,\n    pid: run_id,\n    ts:  timestamp_utc,\n    t0:  Date.now(),\n\n    // Review configuration\n    REVIEW,\n    review_title:     REVIEW.title,        // shortcut for downstream\n    review_prospero:  REVIEW.prospero_id,\n\n    // Backwards-compat: SUJET object (used by some legacy node code)\n    SUJET: {\n      titre: REVIEW.title,\n      g1:    POPULATION,\n      g2:    INTERVENTION,\n      g3:    METHOD,\n      y1:    REVIEW.year_from,\n      y2:    REVIEW.year_to,\n    },\n\n    // Operational config\n    KEYS,\n    SHEET,\n    PAGES,\n    RATE,\n    RETRY,\n    SCREENING,\n    q: QUERIES,\n\n    // Useful diagnostics for downstream nodes\n    config_warnings: warnings,\n    corpus_size:     REVIEW.corpus_size,\n  }\n}];\n"
+      },
+      "id": "7b4fad29-1f86-4c6e-9335-b96245fdd09e",
+      "name": "⚙️ Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        10304,
+        2896
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const c=$input.first().json;\nconst K=c.KEYS,Q=c.q,P=c.PAGES,R=c.RATE,RT=c.RETRY;\nconst Y1=c.SUJET.y1,Y2=c.SUJET.y2;\nasync function http(url,headers={},timeout=null){\n  const to=timeout||RT.timeout;\n  for(let a=0;a<RT.max;a++){\n    try{return await this.helpers.httpRequest({method:'GET',url,headers,timeout:to});}\n    catch(e){\n      const code=e.response?.status||e.statusCode||0;\n      if(code===429){await wait(RT.rate_delay*(a+1));continue;}\n      if(code===401||code===403)throw new Error(`${code} Auth: ${String(e.message).slice(0,80)}`);\n      if(code>=500){await wait(RT.base_delay*Math.pow(2,a));continue;}\n      if(a===RT.max-1)throw e;\n      await wait(RT.base_delay*(a+1));\n    }\n  }\n}\nconst wait=ms=>new Promise(r=>setTimeout(r,ms));\nconst t0=Date.now();const articles=[];let found=0;const errs=[];\ntry{\n  for(let pg=1;pg<=P.openalex.pages;pg++){\n    try{\n      const url='https://api.openalex.org/works?search='+encodeURIComponent(Q.openalex)\n        +'&filter=from_publication_date:'+Y1+'-01-01,to_publication_date:'+Y2+'-12-31,type:article'\n        +'&per_page='+P.openalex.per_page+'&page='+pg+'&sort=relevance_score:desc'\n        +'&select=id,title,doi,publication_year,authorships,abstract_inverted_index,cited_by_count,open_access,primary_location'\n        +'&mailto='+K.email;\n      const r=await http.call(this,url);\n      if(!r?.results?.length)break;\n      if(pg===1)found=r.meta?.count||0;\n      for(const p of r.results){\n        let abs='';\n        if(p.abstract_inverted_index){const w=[];for(const[word,pos]of Object.entries(p.abstract_inverted_index))for(const i of pos)w[i]=word;abs=w.filter(Boolean).join(' ');}\n        const au=(p.authorships||[]).slice(0,5).map(a=>a.author?.display_name).filter(Boolean).join('; ');\n        // E3: Open Access detection\n        const isOA=!!(p.open_access?.is_oa);\n        const oaStatus=p.open_access?.oa_status||'';\n        const journalName=p.primary_location?.source?.display_name||'';\n        const venueType=p.primary_location?.source?.type||'';\n        articles.push({source:'OpenAlex',title:String(p.title||'').trim(),authors:au||'N/A',\n          year:p.publication_year,doi:String(p.doi||'').replace('https://doi.org/','').trim(),\n          abstract:abs,citations:p.cited_by_count||0,no_abstract:!abs||abs.length<50,is_oa:isOA,oa_status:oaStatus,journal_name:journalName,venue_type:venueType});\n      }\n      if(articles.length>=P.openalex.max_total||articles.length>=found)break;\n      if(pg<P.openalex.pages)await wait(R.openalex);\n    }catch(pe){errs.push('p'+pg+':'+pe.message.slice(0,50));}\n  }\n}catch(e){errs.push('FATAL:'+e.message.slice(0,80));}\nreturn [{json:{...c,source_result:{src:'OpenAlex',articles,found,fetched:articles.length,status:articles.length>0?'OK':'EMPTY',errs,ms:Date.now()-t0}}}];"
+      },
+      "id": "4b5f4f0b-d7dd-48b9-b0da-62d3cca27586",
+      "name": "📡 1. OpenAlex API",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        10608,
+        2896
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ══════════════════════════════════════════════════════════════\n// 📡 PubMed v17 — FIX: Hardened XML parsing + robust fallback\n// Changes from v16:\n// - Regex-based extraction with fallback for each field\n// - try/catch around each article parse (one bad record doesn't kill batch)\n// - MeSH extraction increased from 8 to 15 terms\n// ══════════════════════════════════════════════════════════════\nconst c=$input.first().json;\nconst K=c.KEYS,Q=c.q,P=c.PAGES,R=c.RATE,RT=c.RETRY;\nconst Y1=c.SUJET.y1,Y2=c.SUJET.y2;\nasync function http(url,headers={},timeout=null){\n  const to=timeout||RT.timeout;\n  for(let a=0;a<RT.max;a++){\n    try{return await this.helpers.httpRequest({method:'GET',url,headers,timeout:to});}\n    catch(e){\n      const code=e.response?.status||e.statusCode||0;\n      if(code===429){await wait(RT.rate_delay*(a+1));continue;}\n      if(code===401||code===403)throw new Error(`${code} Auth`);\n      if(code>=500){await wait(RT.base_delay*Math.pow(2,a));continue;}\n      if(a===RT.max-1)throw e;\n      await wait(RT.base_delay*(a+1));\n    }\n  }\n}\nconst wait=ms=>new Promise(r=>setTimeout(r,ms));\nconst t0=Date.now();const articles=[];let found=0;const errs=[];\n\n// Robust tag extractor — handles multiline, attributes, nested tags\nfunction safeExtract(block, tag) {\n  const patterns = [\n    new RegExp('<'+tag+'[^>]*>([\\\\s\\\\S]*?)</'+tag+'>', 'i'),\n    new RegExp('<'+tag+'>([\\\\s\\\\S]*?)</'+tag+'>', 'i'),\n  ];\n  for (const p of patterns) {\n    const m = block.match(p);\n    if (m) return m[1].replace(/<[^>]+>/g, '').replace(/\\s+/g, ' ').trim();\n  }\n  return '';\n}\n\ntry{\n  const esUrl='https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term='+encodeURIComponent(Q.pubmed)+'&retmax='+P.pubmed.max_ids+'&retmode=json&usehistory=y&api_key='+K.ncbi;\n  const es=await http.call(this,esUrl);\n  const ids=es?.esearchresult?.idlist||[];found=parseInt(es?.esearchresult?.count||'0');\n  \n  for(let i=0;i<ids.length;i+=P.pubmed.batch_size){\n    const batch=ids.slice(i,i+P.pubmed.batch_size);\n    try{\n      const efUrl='https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id='+batch.join(',')+'&retmode=xml&rettype=abstract&api_key='+K.ncbi;\n      const xml=await http.call(this,efUrl,{},RT.timeout_xl);\n      const xs=typeof xml==='string'?xml:JSON.stringify(xml);\n      \n      // V17: More robust splitting — handle both PubmedArticle and PubmedBookArticle\n      const blocks=xs.split(/<PubmedArticle\\b[^>]*>/i);\n      \n      for(let j=1;j<blocks.length;j++){\n        try { // V17: try/catch per article — one bad record doesn't crash the batch\n          const b=blocks[j];\n          const title=safeExtract(b,'ArticleTitle');\n          if(!title||title.length<5)continue;\n          \n          // V17: Multi-section abstract support\n          let abs='';\n          const absBlocks=b.match(/<AbstractText[^>]*>[\\s\\S]*?<\\/AbstractText>/gi)||[];\n          if(absBlocks.length>0) abs=absBlocks.map(m=>m.replace(/<[^>]+>/g,'').trim()).join(' ');\n          else abs=safeExtract(b,'Abstract');\n          \n          const lns=b.match(/<LastName>([^<]+)<\\/LastName>/gi)||[];\n          const au=lns.slice(0,5).map(m=>m.replace(/<[^>]+>/g,'')).join('; ');\n          \n          let doi='';\n          const dm=b.match(/<ArticleId\\s+IdType=\"doi\">([^<]+)<\\/ArticleId>/i);\n          if(dm)doi=dm[1];\n          \n          // V17: Increased MeSH extraction from 8 to 15\n          const meshMatches=b.match(/<DescriptorName[^>]*>([^<]+)<\\/DescriptorName>/gi)||[];\n          const mesh=meshMatches.slice(0,15).map(m=>m.replace(/<[^>]+>/g,'').trim()).join('; ');\n          \n          const yearMatch=b.match(/<Year>(\\d{4})<\\/Year>/);\n          const year=yearMatch?parseInt(yearMatch[1]):null;\n          \n          articles.push({\n            source:'PubMed',title,authors:au||'N/A',year,doi,\n            abstract:abs,citations:0,no_abstract:!abs||abs.length<50,\n            mesh_terms:mesh,\n            is_oa:!!(b.match(/<ArticleId\\s+IdType=\"pmc\">/i)),\n          });\n        } catch(parseErr) {\n          errs.push('[PARSE] Article '+j+': '+parseErr.message.slice(0,40));\n        }\n      }\n      if(i+P.pubmed.batch_size<ids.length)await wait(R.pubmed);\n    }catch(be){errs.push('batch'+Math.floor(i/P.pubmed.batch_size)+':'+be.message.slice(0,50));}\n  }\n  \n  // Citation enrichment via OpenAlex batch DOI\n  const withDoi=articles.filter(a=>a.doi&&a.doi.length>3);\n  if(withDoi.length>0){\n    try{\n      const doiBatch=withDoi.slice(0,50).map(a=>a.doi).join('|');\n      const oaUrl='https://api.openalex.org/works?filter=doi:'+encodeURIComponent(doiBatch)+'&select=doi,cited_by_count&per_page=50&mailto='+K.email;\n      const oaR=await http.call(this,oaUrl);\n      if(oaR?.results){\n        const citMap={};\n        for(const w of oaR.results)if(w.doi)citMap[w.doi.replace('https://doi.org/','').toLowerCase()]=w.cited_by_count||0;\n        for(const a of articles)if(a.doi)a.citations=citMap[a.doi.toLowerCase()]||0;\n      }\n      errs.push('[INFO] Citations enriched for '+withDoi.length+' PubMed DOIs');\n    }catch(ce){errs.push('[WARN] PubMed citation enrich failed: '+ce.message.slice(0,50));}\n  }\n}catch(e){errs.push('FATAL:'+e.message.slice(0,80));}\nreturn [{json:{...c,source_result:{src:'PubMed',articles,found,fetched:articles.length,status:articles.length>0?'OK':'EMPTY',errs,ms:Date.now()-t0}}}];\n"
+      },
+      "id": "399272c4-7992-40a2-b45b-df1f481be411",
+      "name": "📡 2. PubMed API",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        10608,
+        3088
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const c=$input.first().json;\nconst K=c.KEYS,Q=c.q,P=c.PAGES,R=c.RATE,RT=c.RETRY;\nconst Y1=c.SUJET.y1,Y2=c.SUJET.y2;\nasync function http(url,headers={},timeout=null){\n  const to=timeout||RT.timeout;\n  for(let a=0;a<RT.max;a++){\n    try{return await this.helpers.httpRequest({method:'GET',url,headers,timeout:to});}\n    catch(e){\n      const code=e.response?.status||e.statusCode||0;\n      if(code===429){await wait(RT.rate_delay*(a+1));continue;}\n      if(code===401||code===403)throw new Error(`${code} Auth`);\n      if(code>=500){await wait(RT.base_delay*Math.pow(2,a));continue;}\n      if(a===RT.max-1)throw e;\n      await wait(RT.base_delay*(a+1));\n    }\n  }\n}\nconst wait=ms=>new Promise(r=>setTimeout(r,ms));\nconst t0=Date.now();const articles=[];let found=0;const errs=[];\ntry{\n  for(let pg=0;pg<P.semantic_scholar.pages;pg++){\n    try{\n      const url='https://api.semanticscholar.org/graph/v1/paper/search?query='+encodeURIComponent(Q.semantic)+'&limit='+P.semantic_scholar.per_page+'&offset='+(pg*P.semantic_scholar.per_page)+'&fields=title,authors,year,abstract,citationCount,externalIds,publicationTypes,isOpenAccess,openAccessPdf&year='+Y1+'-'+Y2;\n      const r=await http.call(this,url,{'x-api-key':K.semantic});\n      if(!r?.data?.length)break;\n      if(pg===0)found=r.total||0;\n      for(const p of r.data){\n        const au=(p.authors||[]).slice(0,5).map(a=>a.name).filter(Boolean).join('; ');\n        articles.push({source:'SemanticScholar',title:String(p.title||'').trim(),authors:au||'N/A',year:p.year,doi:p.externalIds?.DOI||'',abstract:String(p.abstract||''),citations:p.citationCount||0,no_abstract:!p.abstract||p.abstract.length<50,is_oa:!!(p.isOpenAccess)});\n      }\n      if(articles.length>=P.semantic_scholar.max_total||articles.length>=found)break;\n      if(pg<P.semantic_scholar.pages-1)await wait(R.semantic);\n    }catch(pe){errs.push('p'+pg+':'+pe.message.slice(0,50));if(pe.message.includes('429'))await wait(RT.rate_delay);}\n  }\n}catch(e){errs.push('FATAL:'+e.message.slice(0,80));}\nreturn [{json:{...c,source_result:{src:'SemanticScholar',articles,found,fetched:articles.length,status:articles.length>0?'OK':'EMPTY',errs,ms:Date.now()-t0}}}];"
+      },
+      "id": "d2bf830a-912c-46d7-9fbf-305ee11ca4cf",
+      "name": "📡 3. Semantic Scholar API",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        10608,
+        3264
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const c=$input.first().json;\nconst K=c.KEYS,Q=c.q,P=c.PAGES,R=c.RATE,RT=c.RETRY;\nconst Y1=c.SUJET.y1,Y2=c.SUJET.y2;\nasync function http(url,headers={},timeout=null){\n  const to=timeout||RT.timeout;\n  for(let a=0;a<RT.max;a++){\n    try{return await this.helpers.httpRequest({method:'GET',url,headers,timeout:to});}\n    catch(e){\n      const code=e.response?.status||e.statusCode||0;\n      if(code===429){await wait(RT.rate_delay*(a+1));continue;}\n      if(code===401||code===403)throw new Error(`${code} Auth`);\n      if(code>=500){await wait(RT.base_delay*Math.pow(2,a));continue;}\n      if(a===RT.max-1)throw e;\n      await wait(RT.base_delay*(a+1));\n    }\n  }\n}\nconst wait=ms=>new Promise(r=>setTimeout(r,ms));\nconst t0=Date.now();const articles=[];let found=0;const errs=[];\ntry{\n  for(let pg=1;pg<=P.ieee.pages;pg++){\n    try{\n      const start=(pg-1)*P.ieee.per_page+1;\n      const url='https://ieeexploreapi.ieee.org/api/v1/search/articles?querytext='+encodeURIComponent(Q.ieee)+'&apikey='+K.ieee+'&max_records='+P.ieee.per_page+'&start_record='+start+'&start_year='+Y1+'&end_year='+Y2;\n      const r=await http.call(this,url);\n      if(!r?.articles?.length)break;\n      if(pg===1)found=r.total_records||0;\n      for(const p of r.articles){\n        const au=(p.authors?.authors||[]).map(a=>a.full_name).filter(Boolean).join('; ');\n        articles.push({source:'IEEE',title:String(p.title||'').trim(),authors:au||'N/A',year:parseInt(p.publication_year)||null,doi:p.doi||'',abstract:String(p.abstract||''),citations:parseInt(p.citing_paper_count)||0,no_abstract:!p.abstract||p.abstract.length<50});\n      }\n      if(articles.length>=P.ieee.max_total||articles.length>=found)break;\n      if(pg<P.ieee.pages)await wait(R.ieee);\n    }catch(pe){errs.push('p'+pg+':'+pe.message.slice(0,50));}\n  }\n}catch(e){errs.push('FATAL:'+e.message.slice(0,80));}\nreturn [{json:{...c,source_result:{src:'IEEE',articles,found,fetched:articles.length,status:articles.length>0?'OK':'EMPTY',errs,ms:Date.now()-t0}}}];"
+      },
+      "id": "b8e3d7e6-937a-49b7-9ff0-26577f4732f6",
+      "name": "📡 4. IEEE Xplore API",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        10608,
+        3440
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ════════════════════════════════════════════════════════════════\n// 📡 SCOPUS v11 — E1+E2+E3: Abstract enrichment + Affiliation + OA\n// ════════════════════════════════════════════════════════════════\nconst c=$input.first().json;\nconst K=c.KEYS,Q=c.q,P=c.PAGES,R=c.RATE,RT=c.RETRY;\nconst Y1=c.SUJET.y1,Y2=c.SUJET.y2;\nconst t0=Date.now();\nconst HARD_TIMEOUT=45000;\nconst wait=ms=>new Promise(r=>setTimeout(r,ms));\nasync function httpScopus(url,timeoutMs=10000){\n  for(let a=0;a<2;a++){\n    try{return await this.helpers.httpRequest({method:'GET',url,headers:{'X-ELS-APIKey':K.scopus,'Accept':'application/json'},timeout:timeoutMs});}\n    catch(e){\n      const code=e.response?.status||e.statusCode||0;\n      if(code===429||String(e.message).includes('quota'))throw new Error('QUOTA_EXCEEDED: '+String(e.message).slice(0,60));\n      if(code===401||code===403)throw new Error(code+' Auth');\n      if(a===1)throw e;\n      await wait(1000);\n    }\n  }\n}\nconst articles=[],errs=[];let found=0;\ntry{\n  for(let pg=0;pg<P.scopus.pages;pg++){\n    if(Date.now()-t0>HARD_TIMEOUT-12000){errs.push('[GUARD] Time limit after '+pg+' pages');break;}\n    try{\n      const url='https://api.elsevier.com/content/search/scopus?query='+encodeURIComponent(Q.scopus)\n        +'&count='+P.scopus.per_page+'&start='+(pg*P.scopus.per_page)\n        +'&sort=relevance&httpAccept=application%2Fjson';\n      const r=await httpScopus.call(this,url,12000);\n      if(!r?.['search-results']?.entry)break;\n      const entries=r['search-results'].entry.filter(e=>!e.error);\n      if(!entries.length)break;\n      if(pg===0)found=parseInt(r['search-results']['opensearch:totalResults']||'0');\n      for(const p of entries){\n        const abs=String(p['dc:description']||'');\n        const hasAbs=abs.length>50;\n        // E2: affiliation extraction\n        const affil=String(p['affiliation']?.[0]?.['affilname']||p['affiliation']?.affilname||'');\n        // E3: OA detection\n        const isOA=!!(p['openaccessFlag']||p['openaccess']==='1');\n        articles.push({\n          source:'Scopus',title:String(p['dc:title']||'').trim(),\n          authors:String(p['dc:creator']||'N/A'),\n          year:parseInt((p['prism:coverDate']||'').slice(0,4))||null,\n          doi:p['prism:doi']||'',abstract:abs,\n          citations:parseInt(p['citedby-count'])||0,\n          no_abstract:!hasAbs,scopus_title_only:!hasAbs,\n          scopus_eid:p['eid']||'',\n          affiliation:affil, is_oa:isOA,\n        });\n      }\n      if(articles.length>=P.scopus.max_total||articles.length>=found)break;\n      if(pg<P.scopus.pages-1)await wait(R.scopus);\n    }catch(pe){\n      errs.push('p'+pg+':'+pe.message.slice(0,60));\n      if(pe.message.startsWith('QUOTA'))break;\n    }\n  }\n  // E1: Enrichissement abstracts PARALLÈLE batch×5\n  if(c.SCREENING?.scopus_enrich_abstract){\n    const toEnrich=articles.filter(a=>a.no_abstract&&a.doi&&a.doi.length>3).slice(0,20);\n    const timeLeft=HARD_TIMEOUT-(Date.now()-t0);\n    if(toEnrich.length>0&&timeLeft>12000){\n      let enriched=0;\n      for(let i=0;i<toEnrich.length;i+=5){\n        if(Date.now()-t0>HARD_TIMEOUT-5000){errs.push('[GUARD] Enrich stopped at '+i);break;}\n        const batch=toEnrich.slice(i,i+5);\n        const results=await Promise.allSettled(batch.map(a=>{\n          const eUrl='https://api.elsevier.com/content/article/doi/'+encodeURIComponent(a.doi)+'?httpAccept=application%2Fjson';\n          return httpScopus.call(this,eUrl,8000);\n        }));\n        for(let j=0;j<results.length;j++){\n          if(results[j].status==='fulfilled'){\n            const eR=results[j].value;\n            const eAbs=eR?.['full-text-retrieval-response']?.coredata?.['dc:description']\n                     ||eR?.['abstracts-retrieval-response']?.coredata?.['dc:description']||'';\n            if(eAbs.length>50){batch[j].abstract=eAbs;batch[j].no_abstract=false;batch[j].scopus_title_only=false;enriched++;}\n            // E2: affiliation enriched\n            const affils=eR?.['abstracts-retrieval-response']?.affiliation;\n            if(affils&&!batch[j].affiliation)batch[j].affiliation=Array.isArray(affils)?affils[0]?.affilname||'':affils?.affilname||'';\n          }\n        }\n        if(i+5<toEnrich.length)await wait(200);\n      }\n      if(enriched>0)errs.push('[INFO] '+enriched+'/'+toEnrich.length+' abstracts enriched (E1 parallel)');\n    }\n  }\n}catch(e){errs.push('FATAL:'+e.message.slice(0,80));}\nconst noAbsCount=articles.filter(a=>a.no_abstract).length;\nconst duration=Date.now()-t0;\nreturn [{json:{...c,source_result:{src:'Scopus',articles,found,fetched:articles.length,status:articles.length>0?`OK (${articles.length} fetched, ${noAbsCount} no-abstract, ${Math.round(duration/1000)}s)`:`EMPTY (${Math.round(duration/1000)}s)`,errs,ms:duration}}}];"
+      },
+      "id": "254ca918-b916-44a2-ac8e-5304389dda52",
+      "name": "📡 5. Scopus API",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        10608,
+        3616
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ════════════════════════════════════════════════════════════════\n// 📡 SPRINGER v11 — A5: Requêtes optimisées + meta/v2 + openaccess\n// ════════════════════════════════════════════════════════════════\nconst c=$input.first().json;\nconst SUJET=c.SUJET||{},KEYS=c.KEYS||{},PAGES=c.PAGES||{},RATE=c.RATE||{},RETRY=c.RETRY||{},Q=c.q||{};\nif (!SUJET.y1 || !SUJET.y2) throw new Error('Missing year range in Config (SUJET.y1/y2).');\nconst Y1=Number(SUJET.y1),Y2=Number(SUJET.y2);\nconst KEY_META=String(KEYS.springer_meta||KEYS.springer||'').trim();\nconst KEY_OA=String(KEYS.springer_oa||'').trim();\nconst PAGE_SIZE=Number(PAGES?.springer?.per_page||20);\nconst HARD_MAX_PAGES=Number(PAGES?.springer?.pages||12);\nconst MAX_TOTAL=Number(PAGES?.springer?.max_total||200);\nconst RATE_MS=Number(RATE?.springer||800);\nconst TIMEOUT_MS=Number(RETRY?.timeout||30000);\nconst RETRY_MAX=Number(RETRY?.max||3);\nconst BASE_DELAY=Number(RETRY?.base_delay||1000);\nconst t0=Date.now();\nconst errs=[];\nconst sleep=ms=>new Promise(r=>setTimeout(r,ms));\nfunction withTimeout(p,ms){return Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error('TIMEOUT '+ms+'ms')),ms))]);}\nasync function httpGet(url,qs){\n  let lastErr;\n  for(let attempt=0;attempt<RETRY_MAX;attempt++){\n    try{return await withTimeout(this.helpers.httpRequest({method:'GET',url,qs,headers:{Accept:'application/json','User-Agent':'n8n-springer/1.0'},timeout:TIMEOUT_MS,json:true}),TIMEOUT_MS+1000);}\n    catch(e){\n      lastErr=e;\n      const code=e?.response?.status||e?.statusCode||0;\n      const body=e?.response?.data?JSON.stringify(e.response.data).slice(0,500):String(e.message||e).slice(0,500);\n      if(code===400||code===401||code===403)throw new Error(`HTTP ${code} — ${body}`);\n      if(code===429){await sleep(RATE_MS*(attempt+1));continue;}\n      if(code>=500||String(e.message||'').startsWith('TIMEOUT')){if(attempt<RETRY_MAX-1){await sleep(BASE_DELAY*Math.pow(2,attempt));continue;}}\n      if(attempt<RETRY_MAX-1){await sleep(BASE_DELAY*(attempt+1));continue;}\n      throw new Error(`HTTP ${code||'ERR'} — ${body}`);\n    }\n  }\n  throw lastErr||new Error('Unknown HTTP error');\n}\nfunction norm(s){return String(s||'').replace(/\\s+/g,' ').trim();}\nfunction yearFrom(v){const m=String(v||'').match(/\\b(19|20)\\d{2}\\b/);return m?Number(m[0]):0;}\nfunction pickYear(r){\n  for(const c of[r?.publicationDate,r?.coverDate,r?.onlineDate,r?.printDate,r?.date,r?.published]){\n    const y=yearFrom(c);if(y)return y;\n  }\n  return yearFrom(JSON.stringify({d:r?.publicationDate,c:r?.coverDate}));\n}\nfunction pickAuthors(r){\n  if(Array.isArray(r?.creators))return r.creators.map(x=>x?.creator||x?.name||'').filter(Boolean).join('; ');\n  if(Array.isArray(r?.authors))return r.authors.map(x=>x?.name||x?.author||'').filter(Boolean).join('; ');\n  return '';\n}\nfunction pickDoi(r){const id=String(r?.identifier||'');if(id.startsWith('doi:'))return id.replace(/^doi:/i,'').trim();return String(r?.doi||'').trim();}\nfunction parseRec(r,kind){\n  const year=pickYear(r);\n  return{source:'Springer',source_kind:kind,title:norm(r?.title||''),abstract:norm(r?.abstract||r?.summary||''),year,doi:pickDoi(r),authors:pickAuthors(r),citations:0,no_abstract:!r?.abstract||r.abstract.length<50,is_oa:kind==='openaccess'};\n}\nfunction inRange(y){return y>=Y1&&y<=Y2;}\nfunction dedup(all){\n  const seenDOI=new Set(),seenTitle=new Set(),out=[];\n  for(const a of all){\n    const dk=a.doi&&a.doi.length>3?a.doi.toLowerCase():null;\n    const tk=(a.title||'').toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,120);\n    if(!tk||tk.length<10)continue;\n    if(dk&&seenDOI.has(dk))continue;\n    if(seenTitle.has(tk))continue;\n    if(dk)seenDOI.add(dk);seenTitle.add(tk);out.push(a);\n  }\n  return out;\n}\n// A5: Requêtes optimisées — keyword: prefix pour meta\nif (!Q.springer_meta) throw new Error('Missing Q.springer_meta — check Config node generates Springer queries.');\nconst metaQuery=String(Q.springer_meta);\nif (!Q.springer_oa) throw new Error('Missing Q.springer_oa — check Config node generates Springer queries.');\nconst oaQuery=String(Q.springer_oa);\nerrs.push('[INFO] meta q: '+metaQuery);\nerrs.push('[INFO] oa q: '+oaQuery);\nlet metaRecs=[],oaRecs=[];\nasync function fetchEndpoint(base,key,query,kind){\n  const recs=[];let outOfRange=0;\n  for(let p=0;p<HARD_MAX_PAGES;p++){\n    const s=p*PAGE_SIZE+1;\n    try{\n      const data=await httpGet.call(this,base,{q:query,api_key:key,p:PAGE_SIZE,s});\n      const rows=Array.isArray(data?.records)?data.records:[];\n      if(!rows.length)break;\n      let kept=0,minY=9999,maxY=0;\n      for(const r of rows){\n        const a=parseRec(r,kind);\n        if(a.year){minY=Math.min(minY,a.year);maxY=Math.max(maxY,a.year);}\n        if(a.title&&inRange(a.year)){recs.push(a);kept++;}\n      }\n      errs.push('[DEBUG] '+kind+' p'+p+' kept='+kept+' yr='+minY+'-'+maxY);\n      if(kept===0)outOfRange++;else outOfRange=0;\n      if(recs.length>=MAX_TOTAL)break;\n      if(rows.length<PAGE_SIZE)break;\n      if(outOfRange>=5&&maxY<Y1)break;\n      if(p<HARD_MAX_PAGES-1)await sleep(RATE_MS);\n    }catch(e){errs.push(kind+' p'+p+': '+String(e.message).slice(0,200));break;}\n  }\n  return recs;\n}\ntry{if(KEY_META)metaRecs=await fetchEndpoint.call(this,'https://api.springernature.com/meta/v2/json',KEY_META,metaQuery,'meta');\n    else errs.push('meta skipped: no KEY_META');\n}catch(e){errs.push('meta fatal: '+String(e.message).slice(0,180));}\nawait sleep(RATE_MS);\ntry{if(KEY_OA)oaRecs=await fetchEndpoint.call(this,'https://api.springernature.com/openaccess/json',KEY_OA,oaQuery,'openaccess');\n    else errs.push('oa skipped: no KEY_OA');\n}catch(e){errs.push('oa fatal: '+String(e.message).slice(0,180));}\nconst all=dedup([...metaRecs,...oaRecs]);\nconst status=all.length===0?`EMPTY — meta:${metaRecs.length} oa:${oaRecs.length} in ${Y1}-${Y2}`:`OK — meta:${metaRecs.length} + oa:${oaRecs.length} → ${all.length} uniques (${Math.round((Date.now()-t0)/1000)}s)`;\nreturn [{json:{...c,source_result:{src:'Springer',articles:all,found:all.length,fetched:all.length,status,errs,ms:Date.now()-t0}}}];"
+      },
+      "id": "8d9d3b66-7f9d-4b52-8a76-8cb5a5efe7d8",
+      "name": "📡 6. Springer Nature API",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        10608,
+        3808
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "3c969c76-bbe7-43a5-a1b8-6594bc947e66",
+      "name": "🔗 Merge: OpenAlex + PubMed",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 1,
+      "position": [
+        10912,
+        2992
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "05845e18-d2fa-47d6-b9e1-2826cacdb856",
+      "name": "🔗 Merge: Semantic Scholar + IEEE",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 1,
+      "position": [
+        10912,
+        3360
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "0a58ad78-5be3-468b-8469-7160ed3327c6",
+      "name": "🔗 Merge: Scopus + Springer",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 1,
+      "position": [
+        10912,
+        3712
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "19f0b1b5-00a4-45b4-9842-a114f50635b7",
+      "name": "🔗 Merge: Pair 1 + Pair 2",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 1,
+      "position": [
+        11152,
+        3168
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "1107c78a-3d22-4078-ae54-1ea6bf1c4a44",
+      "name": "🔗 Merge: All 6 databases",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 1,
+      "position": [
+        11408,
+        3440
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ══════════════════════════════════════════════════════════════\n// 🗂️ ASSEMBLE + NORMALIZE + CITATION ENRICH v17\n// FIX-C7: Springer articles get citation enrichment via OpenAlex\n// ══════════════════════════════════════════════════════════════\nconst items=$input.all();\nconst base=items[0]?.json||{};\nconst K=base.KEYS||{};\nconst allArticles=[],apiStatus={},apiTimings={},apiDetails={},warnings=[];\nconst searchArchive=[];\nlet globalId=0,ok=0;\n\nfor(const item of items){\n  const src=item.json?.source_result;\n  if(!src){warnings.push('Item sans source_result');continue;}\n  apiStatus[src.src]=src.status||'UNKNOWN';\n  apiTimings[src.src]=src.ms||0;\n  apiDetails[src.src]={found:src.found||0,fetched:src.fetched||0,errs:src.errs||[]};\n  if((src.status||'').startsWith('OK'))ok++;\n  else warnings.push(`${src.src}: ${src.status}`);\n  for(const e of(src.errs||[]))\n    if(!e.startsWith('[INFO]')&&!e.startsWith('[GUARD]')&&!e.startsWith('[DEBUG]'))\n      warnings.push(`${src.src}: ${e}`);\n  searchArchive.push({\n    source:src.src, query:item.json?.q?.[src.src.toLowerCase()]||'',\n    timestamp:base.timestamp_utc||'', records_found:src.found||0,\n    records_fetched:src.fetched||0, status:src.status||'UNKNOWN',\n  });\n  for(const a of(src.articles||[])){\n    globalId++;\n    const normalized = {\n      record_id:'rec_'+globalId, id:globalId,\n      source:a.source||src.src,\n      title:String(a.title||'').replace(/\\s+/g,' ').trim(),\n      authors:String(a.authors||'N/A').trim(),\n      year:a.year||null,\n      doi:String(a.doi||'').replace('https://doi.org/','').toLowerCase().trim(),\n      abstract:String(a.abstract||'').trim(),\n      citations:parseInt(a.citations)||0,\n      no_abstract:!a.abstract||a.abstract.length<50,\n      is_oa:!!a.is_oa, oa_status:a.oa_status||'',\n      journal_name:a.journal_name||'', venue_type:a.venue_type||'',\n      mesh_terms:a.mesh_terms||'', affiliation:a.affiliation||'',\n      scopus_eid:a.scopus_eid||'', scopus_title_only:!!a.scopus_title_only,\n    };\n    let comp=0;\n    if(normalized.title&&normalized.title.length>10)comp+=20;\n    if(normalized.abstract&&normalized.abstract.length>50)comp+=25;\n    if(normalized.doi&&normalized.doi.length>3)comp+=15;\n    if(normalized.year)comp+=10;\n    if(normalized.authors&&normalized.authors!=='N/A')comp+=15;\n    if(normalized.citations>0)comp+=5;\n    if(normalized.is_oa)comp+=5;\n    if(normalized.mesh_terms)comp+=5;\n    normalized.metadata_completeness=comp;\n    if(!normalized.title||normalized.title.length<5)continue;\n    allArticles.push(normalized);\n  }\n}\n\n// ── FIX-C7: Citation enrichment for Springer (citations=0) ──\nconst springerNoCit=allArticles.filter(a=>a.source==='Springer'&&a.citations===0&&a.doi&&a.doi.length>3);\nif(springerNoCit.length>0){\n  try{\n    const batches=[];\n    for(let i=0;i<Math.min(springerNoCit.length,100);i+=50){\n      batches.push(springerNoCit.slice(i,i+50));\n    }\n    let enriched=0;\n    for(const batch of batches){\n      const doiFilter=batch.map(a=>a.doi).join('|');\n      const url='https://api.openalex.org/works?filter=doi:'+encodeURIComponent(doiFilter)+'&select=doi,cited_by_count&per_page=50&mailto='+(K.email||'');\n      try{\n        const r=await this.helpers.httpRequest({method:'GET',url,timeout:15000});\n        if(r?.results){\n          const citMap={};\n          for(const w of r.results)if(w.doi)citMap[w.doi.replace('https://doi.org/','').toLowerCase()]=w.cited_by_count||0;\n          for(const a of batch){\n            const c=citMap[a.doi]||0;\n            if(c>0){a.citations=c;enriched++;}\n          }\n        }\n      }catch(e){warnings.push('[WARN] Springer citation enrich batch failed: '+e.message.slice(0,50));}\n    }\n    if(enriched>0)warnings.push('[INFO] '+enriched+'/'+springerNoCit.length+' Springer articles got citation data');\n  }catch(e){warnings.push('[WARN] Springer citation enrichment failed: '+e.message.slice(0,50));}\n}\n\nconst{source_result,...cleanBase}=base;\nreturn [{json:{...cleanBase,\n  articles:allArticles, api_status:apiStatus, api_timings:apiTimings,\n  api_details:apiDetails, search_archive:searchArchive, warnings,\n  merge:{total:allArticles.length,ok,failed:6-ok,sources_received:items.length},\n  layer3_stats:{\n    total_records:allArticles.length, sources_ok:ok,\n    avg_completeness:allArticles.length>0?Math.round(allArticles.reduce((s,a)=>s+a.metadata_completeness,0)/allArticles.length):0,\n    records_with_abstract:allArticles.filter(a=>!a.no_abstract).length,\n    records_with_doi:allArticles.filter(a=>a.doi&&a.doi.length>3).length,\n    springer_citations_enriched:allArticles.filter(a=>a.source==='Springer'&&a.citations>0).length,\n  },\n}}];\n"
+      },
+      "id": "1e646609-e473-4be4-852b-8ae013f2c0a1",
+      "name": "🗂️ Normalise (25-field schema)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        11648,
+        3440
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ══════════════════════════════════════════════════════════════════\n// 🔍 DEDUP v16 — SEPARATED MODULE\n// D1: Fuzzy Jaccard trigram\n// D2: Fallback Author+Year+words\n// D3: Preprint/published merge\n// Produces: clean dedup_audit_log\n// ══════════════════════════════════════════════════════════════════\nconst d=$input.first().json;\nconst articles=d.articles||[];\n\nfunction trigramSet(text){\n  const t=text.toLowerCase().replace(/[^a-z0-9 ]/g,'');\n  const words=t.split(/\\s+/);\n  const tris=new Set();\n  for(const w of words)for(let i=0;i<=w.length-3;i++)tris.add(w.slice(i,i+3));\n  return tris;\n}\nfunction jaccard(s1,s2){\n  if(!s1.size||!s2.size)return 0;\n  const inter=[...s1].filter(x=>s2.has(x)).length;\n  return inter/(s1.size+s2.size-inter);\n}\nfunction firstAuthorLast(au){\n  if(!au)return '';\n  const first=au.split(';')[0].split(',')[0].trim();\n  const parts=first.split(' ');\n  return parts[parts.length-1].toLowerCase();\n}\nfunction normTitle(s){return String(s||'').toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').replace(/[^a-z0-9]/g,'').slice(0,80);}\n\nconst seenDOI=new Map(), seenTitle=new Map();\nconst seenTrigrams=[];\nconst unique=[];let dups=0;const dupLog=[];\nconst dedupMethods={DOI_EXACT:0,TITLE_EXACT:0,FUZZY:0,AUTHOR_YEAR_WORDS:0};\n\nfor(const a of articles){\n  const dk=a.doi&&a.doi.length>3?a.doi.toLowerCase().trim():null;\n  const tk=normTitle(a.title);\n  if(!tk||tk.length<10){dups++;continue;}\n  let isDup=false,dupMethod='',dupOf='';\n\n  // Level 1: DOI exact\n  if(dk&&seenDOI.has(dk)){isDup=true;dupMethod='DOI_EXACT';dupOf=seenDOI.get(dk);}\n\n  // Level 2: Title exact\n  if(!isDup&&seenTitle.has(tk)){isDup=true;dupMethod='TITLE_EXACT';dupOf=seenTitle.get(tk);}\n\n  // Level 3: Fuzzy Jaccard + author confirm\n  if(!isDup&&a.title){\n    const artTri=trigramSet(a.title);\n    const artAuth=firstAuthorLast(a.authors||'');\n    const artYear=a.year;\n    for(const[prevTri,prevSrc,prevAuth,prevYear]of seenTrigrams){\n      const sim=jaccard(artTri,prevTri);\n      if(sim>=0.85){\n        if(artAuth&&prevAuth&&artAuth===prevAuth&&artYear===prevYear){\n          isDup=true;dupMethod=`FUZZY(${sim.toFixed(2)})+AUTHOR`;dupOf=prevSrc;break;\n        } else if(sim>=0.95){\n          isDup=true;dupMethod=`FUZZY(${sim.toFixed(2)})`;dupOf=prevSrc;break;\n        }\n      }\n    }\n  }\n\n  // Level 4: Author+Year+first3words\n  if(!isDup&&a.title&&a.authors&&a.year){\n    const artA=firstAuthorLast(a.authors);\n    const artW=a.title.toLowerCase().replace(/[^a-z0-9 ]/g,'').split(' ').slice(0,3).join('_');\n    const key4=`${artA}_${a.year}_${artW}`;\n    for(const prev of unique){\n      const prevA=firstAuthorLast(prev.authors||'');\n      const prevW=(prev.title||'').toLowerCase().replace(/[^a-z0-9 ]/g,'').split(' ').slice(0,3).join('_');\n      const prevKey4=`${prevA}_${prev.year}_${prevW}`;\n      if(key4===prevKey4&&key4.length>10){isDup=true;dupMethod='AUTHOR_YEAR_WORDS';dupOf=prev.source;break;}\n    }\n  }\n\n  if(isDup){\n    dups++;\n    const baseMethod=dupMethod.split('(')[0].replace('+AUTHOR','');\n    if(baseMethod.startsWith('FUZZY'))dedupMethods.FUZZY++;\n    else dedupMethods[baseMethod]=(dedupMethods[baseMethod]||0)+1;\n    dupLog.push({\n      record_id: a.record_id,\n      title:(a.title||'').slice(0,80),\n      source:a.source,\n      dup_of:dupOf,\n      method:dupMethod,\n      timestamp: d.timestamp_utc,\n    });\n  } else {\n    if(dk)seenDOI.set(dk,a.source);\n    seenTitle.set(tk,a.source);\n    if(a.title)seenTrigrams.push([trigramSet(a.title),a.source,firstAuthorLast(a.authors||''),a.year]);\n    unique.push(a);\n  }\n}\n\nreturn [{json:{...d,\n  articles: unique,\n  dedup_removed: dups,\n  dedup_unique: unique.length,\n  dedup_methods: dedupMethods,\n  dedup_audit_log: dupLog,\n  layer4_stats: {\n    input: articles.length,\n    duplicates: dups,\n    unique: unique.length,\n    dedup_rate: articles.length>0?Math.round((dups/articles.length)*100)+'%':'0%',\n    methods: dedupMethods,\n  },\n}}];\n"
+      },
+      "id": "4adf2af6-7b09-45fe-8398-8bd65d945af4",
+      "name": "🔍 4-Level Deduplication",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        11904,
+        3440
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ════════════════════════════════════════════════════════════════════\n// 📊 Format for Google Sheets — domain-agnostic version\n// ════════════════════════════════════════════════════════════════════\n// Reads everything from upstream Config (no hardcoded keywords).\n// The keyword lists used here come from c.SCREENING:\n//   - SCREENING.ad_keywords     (= POPULATION group from Config)\n//   - SCREENING.speech_keywords (= INTERVENTION group)\n//   - SCREENING.ai_keywords     (= METHOD group)\n// ════════════════════════════════════════════════════════════════════\n\nconst d = $input.first().json;\nconst all = d.results || [];\n\n// Read keyword lists from upstream Config (single source of truth)\nconst SCREENING = d.screening_config || d.SCREENING || {};\nconst AD = SCREENING.ad_keywords     || SCREENING.population_keywords   || [];\nconst SP = SCREENING.speech_keywords || SCREENING.intervention_keywords || [];\nconst AI = SCREENING.ai_keywords     || SCREENING.method_keywords       || [];\n\nif (!AD.length || !SP.length || !AI.length) {\n  throw new Error('Format node: missing keyword lists in upstream config. Verify Screening node passes SCREENING with population/intervention/method keyword arrays.');\n}\n\n// Sort: INCLUDE first, then BORDERLINE-A, BORDERLINE-B, EXCLUDE; then by score\nconst sorted = [...all].sort((a, b) => {\n  const order = { 'INCLUDE': 0, 'BORDERLINE-A': 1, 'BORDERLINE-B': 2, 'EXCLUDE': 3 };\n  const oa = order[a.decision] ?? 4, ob = order[b.decision] ?? 4;\n  if (oa !== ob) return oa - ob;\n  return (b.score || 0) - (a.score || 0);\n});\n\n// Decode HTML entities + strip tags (cleans up abstract HTML noise)\nfunction dec(s) {\n  return (s || '')\n    .replace(/&#x([0-9a-f]+);/gi, (_, c) => String.fromCharCode(parseInt(c, 16)))\n    .replace(/&#(\\d+);/g,         (_, c) => String.fromCharCode(c))\n    .replace(/&amp;/g,  '&').replace(/&lt;/g,   '<').replace(/&gt;/g,  '>')\n    .replace(/&apos;/g, \"'\").replace(/&quot;/g, '\"')\n    .replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ').trim();\n}\n\n// Case-insensitive substring match against a keyword list\nfunction hasKW(text, kw) {\n  const t = (text || '').toLowerCase();\n  for (const k of kw) {\n    if (k && t.includes(String(k).toLowerCase())) return true;\n  }\n  return false;\n}\n\nreturn sorted.map(a => {\n  const title    = dec(a.title || '');\n  const abstract = dec(a.abstract || '');\n  const jName    = a.journal_name || a.journal || a.venue || '';\n\n  // Re-derive q1/q2/q3 from upstream keyword lists (consistent with Layer 1)\n  // If Screening node already populated these on the record, use them directly:\n  const q1 = (a.q1_population !== undefined) ? a.q1_population\n           : (hasKW(title, AD) || hasKW(abstract, AD));\n  const q2 = (a.q2_intervention !== undefined) ? a.q2_intervention\n           : (hasKW(title, SP) || hasKW(abstract, SP));\n  const q3 = (a.q3_method !== undefined) ? a.q3_method\n           : (hasKW(title, AI) || hasKW(abstract, AI));\n\n  // Decision: 3=INCLUDE, 2=BORDERLINE-A, 1=BORDERLINE-B, 0=EXCLUDE\n  const yes = (q1 ? 1 : 0) + (q2 ? 1 : 0) + (q3 ? 1 : 0);\n  let fa;\n  if      (yes === 3) fa = 'INCLUDE';\n  else if (yes === 2) fa = 'BORDERLINE-A';\n  else if (yes === 1) fa = 'BORDERLINE-B';\n  else                fa = 'EXCLUDE';\n\n  return {\n    json: {\n      title:               title.slice(0, 300),\n      authors:             (a.authors || '').slice(0, 250),\n      year:                a.year || '',\n      doi:                 a.doi || '',\n      venue_name:          jName,\n      source:              a.source || '',\n      publication_type:    '',\n      venue_quality:       '',\n      q1_ad:               q1 ? 'YES' : 'NO',\n      q2_speech:           q2 ? 'YES' : 'NO',\n      q3_ai:               q3 ? 'YES' : 'NO',\n      filter_auto:         fa,\n      filter_llm:          '',\n      raison_llm:          '',\n      filter_manuel:       '',\n      raison_manuelle:     '',\n      filter_pdf:          '',\n      filter_readfulltext: '',\n      raison_readfulltext: '',\n      citations:           a.citations    || 0,\n      cit_per_year:        a.cit_per_year || 0,\n      is_multimodal:       a.is_multimodal ? 'YES' : '',\n      is_oa:               a.is_oa         ? 'YES' : '',\n      abstract:            (abstract || '').slice(0, 600),\n      pdf_status:          '',\n      drive_link:          '',\n    }\n  };\n});\n"
+      },
+      "id": "bdd70981-e4b8-4ec8-adcb-dfb1e06960ea",
+      "name": "📊 Format for Google Sheets",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        12512,
+        3552
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "mode": "list",
+          "value": "https://docs.google.com/spreadsheets/d/={{ $json.SHEET }}/edit"
+        },
+        "sheetName": {
+          "mode": "list",
+          "value": "SCREENED"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "baeaaa73-86e2-4218-b350-63ed0ccc7d14",
+      "name": "📝 Write to Google Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        12784,
+        3536
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "",
+          "name": "Google Sheets OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nreturn [{json: {\n  status: 'DONE',\n  rows: items.length,\n  message: items.length + ' articles written to ARTICLES_SCREENED. Run WF2 next.',\n}}];"
+      },
+      "id": "438e5ca8-b6ec-43ce-85ff-807c8eacd665",
+      "name": "✅ Run Summary & Logs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        13040,
+        3536
+      ]
+    },
+    {
+      "id": "sticky_phase_a",
+      "name": "Sticky_PhaseA",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -200,
+        -100
+      ],
+      "parameters": {
+        "content": "## ⚙️ Phase 1A — Configuration\n\nThe **Config** node is the SINGLE place to customise this pipeline for your topic.\n\n**Edit only this node.** All other nodes read parameters from it.\n\n📖 Doc: `n8n/README.md`",
+        "height": 220,
+        "width": 380,
+        "color": 5
+      }
+    },
+    {
+      "id": "sticky_phase_b",
+      "name": "Sticky_PhaseB",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        400,
+        -100
+      ],
+      "parameters": {
+        "content": "## 📡 Phase 1B — Database Acquisition\n\nSix database APIs queried in parallel:\n\n1. **OpenAlex** — multidisciplinary, open\n2. **PubMed** — biomedical, MeSH\n3. **Semantic Scholar** — CS/AI\n4. **IEEE Xplore** — engineering\n5. **Scopus** — multidisciplinary, citation\n6. **Springer Nature** — publisher OA\n\n*Each node retries on rate-limit (3x exponential backoff).*",
+        "height": 280,
+        "width": 360,
+        "color": 4
+      }
+    },
+    {
+      "id": "sticky_phase_c",
+      "name": "Sticky_PhaseC",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1100,
+        -100
+      ],
+      "parameters": {
+        "content": "## 🔗 Phase 1C — Progressive Merging\n\nResults from 6 databases are merged in a **cascade pattern** to keep memory usage low:\n\n```\nOA + PM\nSS + IEEE\nScopus + Springer\n     ↓\n  pair1 + pair2\n     ↓\n   ALL 6\n```\n\n*Cascade > flat merge for n > 1000 records.*",
+        "height": 300,
+        "width": 360,
+        "color": 6
+      }
+    },
+    {
+      "id": "sticky_phase_d",
+      "name": "Sticky_PhaseD",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1900,
+        -100
+      ],
+      "parameters": {
+        "content": "## 🗂️ Phase 1D — Normalise + Deduplicate\n\n**Normalise**: 25-field canonical schema (title, abstract, DOI, authors, year, source, etc.)\n\n**Dedup (4 sequential levels)**:\n1. DOI exact match\n2. Normalised title exact match\n3. Jaccard trigram (≥ 0.85) + first-author match\n4. Author-year hash (review-flagged)",
+        "height": 280,
+        "width": 360,
+        "color": 7
+      }
+    },
+    {
+      "id": "sticky_phase_e",
+      "name": "Sticky_PhaseE",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2700,
+        -100
+      ],
+      "parameters": {
+        "content": "## 📋 Phase 1E — Layer 1 Screening\n\n**3 binary questions** applied to title + abstract:\n- Q1: Mentions target population? (g1)\n- Q2: Mentions intervention/modality? (g2)\n- Q3: Mentions AI/ML method? (g3)\n\n**Decision rule**:\n- 3/3 yes → INCLUDE\n- 2/3 yes → BORDERLINE\n- 0–1/3 → EXCLUDE\n\n*Deterministic — no API calls, < 3 sec for 5,000 records.*",
+        "height": 320,
+        "width": 360,
+        "color": 3
+      }
+    },
+    {
+      "id": "sticky_phase_f",
+      "name": "Sticky_PhaseF",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        3500,
+        -100
+      ],
+      "parameters": {
+        "content": "## 📝 Phase 1F — Output\n\n**Format** records into 25-column rows.\n\n**Write** to Google Sheets `SCREENED` tab via Sheets API v4.\n\n**Generate** PRISMA 2020 SVG flow diagram (auto-updates as Phase 2 progresses).\n\n**Log** run summary with counts per database and dedup statistics.\n\n→ Phase 2 (Colab notebook) takes over from here.",
+        "height": 300,
+        "width": 360,
+        "color": 2
+      }
+    },
+    {
+      "id": "sticky_security",
+      "name": "Sticky_Security",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -200,
+        200
+      ],
+      "parameters": {
+        "content": "## 🔒 Security: API Keys\n\nThis workflow contains **NO** hardcoded API keys.\n\nAll keys are read from **n8n environment variables** at runtime:\n- `PRISMA_NCBI_KEY`\n- `PRISMA_SPRINGER_KEY`\n- `PRISMA_SEMANTIC_SCHOLAR_KEY`\n- `PRISMA_IEEE_KEY`\n- `PRISMA_SCOPUS_KEY`\n- `PRISMA_GOOGLE_SHEET_ID`\n\n**Setup** (n8n cloud): Settings → Variables\n**Setup** (self-hosted): add to `.env`\n\n📖 Full guide: `n8n/README.md`",
+        "height": 340,
+        "width": 380,
+        "color": 1
+      }
+    }
+  ],
+  "connections": {
+    "▶️ Start": {
+      "main": [
+        [
+          {
+            "node": "⚙️ Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📋 Layer 1: Keyword Filter (3 questions)": {
+      "main": [
+        [
+          {
+            "node": "📊 Format for Google Sheets",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "🖼️ PRISMA Flow Diagram (SVG)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⚙️ Config": {
+      "main": [
+        [
+          {
+            "node": "📡 1. OpenAlex API",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "📡 2. PubMed API",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "📡 3. Semantic Scholar API",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "📡 4. IEEE Xplore API",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "📡 5. Scopus API",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "📡 6. Springer Nature API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📡 1. OpenAlex API": {
+      "main": [
+        [
+          {
+            "node": "🔗 Merge: OpenAlex + PubMed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📡 2. PubMed API": {
+      "main": [
+        [
+          {
+            "node": "🔗 Merge: OpenAlex + PubMed",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "📡 3. Semantic Scholar API": {
+      "main": [
+        [
+          {
+            "node": "🔗 Merge: Semantic Scholar + IEEE",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📡 4. IEEE Xplore API": {
+      "main": [
+        [
+          {
+            "node": "🔗 Merge: Semantic Scholar + IEEE",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "📡 5. Scopus API": {
+      "main": [
+        [
+          {
+            "node": "🔗 Merge: Scopus + Springer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📡 6. Springer Nature API": {
+      "main": [
+        [
+          {
+            "node": "🔗 Merge: Scopus + Springer",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "🔗 Merge: OpenAlex + PubMed": {
+      "main": [
+        [
+          {
+            "node": "🔗 Merge: Pair 1 + Pair 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔗 Merge: Semantic Scholar + IEEE": {
+      "main": [
+        [
+          {
+            "node": "🔗 Merge: Pair 1 + Pair 2",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "🔗 Merge: Scopus + Springer": {
+      "main": [
+        [
+          {
+            "node": "🔗 Merge: All 6 databases",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "🔗 Merge: Pair 1 + Pair 2": {
+      "main": [
+        [
+          {
+            "node": "🔗 Merge: All 6 databases",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔗 Merge: All 6 databases": {
+      "main": [
+        [
+          {
+            "node": "🗂️ Normalise (25-field schema)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🗂️ Normalise (25-field schema)": {
+      "main": [
+        [
+          {
+            "node": "🔍 4-Level Deduplication",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔍 4-Level Deduplication": {
+      "main": [
+        [
+          {
+            "node": "📋 Layer 1: Keyword Filter (3 questions)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📊 Format for Google Sheets": {
+      "main": [
+        [
+          {
+            "node": "📝 Write to Google Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📝 Write to Google Sheet": {
+      "main": [
+        [
+          {
+            "node": "✅ Run Summary & Logs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "executionTimeout": 180,
+    "availableInMCP": false
+  },
+  "meta": {},
+  "tags": [
+    {
+      "name": "PRISMA"
+    },
+    {
+      "name": "systematic-review"
+    },
+    {
+      "name": "v0.1.0"
+    },
+    {
+      "name": "production"
+    }
+  ]
+}
