@@ -157,7 +157,7 @@ A `CITATION.cff` file is also provided so GitHub displays a citation widget on t
 
 ## 👥 Authors
 
-- **Anass El Hallani** — PhD candidate · [LIM Lab](https://lim.ma), Hassan II University of Casablanca, Morocco
+- **Anass El Hallani** — PhD candidate · [LIM Lab](), Hassan II University of Casablanca, Morocco
   · [ORCID 0009-0007-3449-4327](https://orcid.org/0009-0007-3449-4327)
 - **Adil Chakhtouna** — Supervisor, LIM
 - **Abdellah Adib** — Co-supervisor, LIM
